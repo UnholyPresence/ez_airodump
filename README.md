@@ -21,6 +21,12 @@ I use it for authorized Penetration Testing, keyword "authorized".
 USING PENETRATION TESTING/RED TEAMING/HACKING TOOLS AGAINST SYSTEMS YOU DO NOT HAVE WRITTEN PERMISSION TO INTERACT WITH IS A CRIME
 
 ---
+This script accepts the following arguments:
+- "-i", "--interface"   Set interface, default wlan0
+- "-w", "--write"       Output file
+- "-b", "--bssid"       Filter to target MAC/BSSID
+- "-e", "--essid"       Filter to target ESSID (essid = ssid, airodump does not have an "ssid" arg)
+- "-c", "--channel"     Filter to target channel
 
 ## Requirements
 
