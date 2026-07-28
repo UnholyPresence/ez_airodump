@@ -25,6 +25,18 @@ usage() {
     echo "  -c, --channel     Lock to channel"
 }
 
+require_value() {
+    local flag="$1"
+    local remaining="$2"
+
+    if [[ "$remaining" -lt 2 ]]; then
+        echo "/!\ Option $flag requires a value."
+        echo
+        usage
+        exit 1
+    fi
+}
+
 get_monitor_iface_for_phy() {
     local phy="$1"
 
@@ -32,17 +44,36 @@ get_monitor_iface_for_phy() {
         $1 ~ /^phy#/ {
             current_phy = $1
             sub(/^phy#/, "phy", current_phy)
+            iface = ""
         }
 
         $1 == "Interface" {
             iface = $2
         }
 
-        $1 == "type" && $2 == "monitor" && current_phy == target_phy {
+        $1 == "type" && $2 == "monitor" && current_phy == target_phy && iface != "" {
             print iface
             exit
         }
     '
+}
+
+check_dependencies() {
+    local missing=()
+    local cmd
+
+    for cmd in airmon-ng airodump-ng iw ip rfkill systemctl; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            missing+=("$cmd")
+        fi
+    done
+
+    if [[ "${#missing[@]}" -gt 0 ]]; then
+        echo "/!\ Missing required tool(s): ${missing[*]}"
+        echo
+        echo "Install with: sudo apt install aircrack-ng iw iproute2 rfkill"
+        exit 1
+    fi
 }
 
 cleanup() {
@@ -66,11 +97,13 @@ cleanup() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -i|--interface)
-            IFACE="${2:-}"
+            require_value "$1" "$#"
+            IFACE="$2"
             shift 2
             ;;
         -w|--write|--output)
-            OUT_PREFIX="${2:-}"
+            require_value "$1" "$#"
+            OUT_PREFIX="$2"
             shift 2
             ;;
         -h|--help)
@@ -78,16 +111,25 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         -b|--bssid)
-            BSSID="${2:-}"
+            require_value "$1" "$#"
+            BSSID="$2"
             shift 2
             ;;
         -e|--essid|--ssid)
-            ESSID="${2:-}"
+            require_value "$1" "$#"
+            ESSID="$2"
             shift 2
             ;;
         -c|--channel)
-            CHANNEL="${2:-}"
+            require_value "$1" "$#"
+            CHANNEL="$2"
             shift 2
+            ;;
+        -*)
+            echo "/!\ Unknown option: $1"
+            echo
+            usage
+            exit 1
             ;;
         *)
             if [[ "$IFACE" == "wlan0" ]]; then
@@ -108,8 +150,10 @@ if [[ "$EUID" -ne 0 ]]; then
     exit 1
 fi
 
+check_dependencies
+
 if ! ip link show "$IFACE" >/dev/null 2>&1; then
-    echo "${RED}[+] /!\ Interface '$IFACE' not found.${RESET}\n"
+    echo "/!\ Interface '$IFACE' not found."
     echo
     echo "Available interfaces:"
     ip -br link
@@ -139,7 +183,10 @@ echo "Killing monitor-mode conflicts..."
 airmon-ng check kill
 
 echo "Starting monitor mode..."
-airmon-ng start "$IFACE"
+if ! airmon-ng start "$IFACE"; then
+    echo "/!\ airmon-ng failed to start monitor mode on '$IFACE' (see output above)."
+    exit 1
+fi
 
 MON_IFACE="$(get_monitor_iface_for_phy "$PHY")"
 
